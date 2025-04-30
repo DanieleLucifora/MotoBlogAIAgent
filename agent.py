@@ -1,5 +1,7 @@
 import os
 import json
+import difflib
+from datetime import datetime
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
@@ -8,7 +10,7 @@ from serpapi import GoogleSearch
 from prompt import get_prompt_by_category
 
 # === Costanti ===
-HISTORY_FILE = "topic_history.json"
+HISTORY_FILE = "topic_history.json"  # File JSON con lista di dict: {"topic": ..., "category": ..., "date": ...}
 
 # === Funzioni di gestione dello storico ===
 def load_topic_history():
@@ -21,17 +23,24 @@ def save_topic_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
-def is_duplicate(topic, history):
-    return topic.lower() in (t.lower() for t in history)
+def is_duplicate(new_topic, history):
+    return any(new_topic.lower() == t["topic"].lower() for t in history)
+
+def is_similar(new_topic, history, threshold: float = 0.85):
+    for old in history:
+        ratio = difflib.SequenceMatcher(None, new_topic.lower(), old["topic"].lower()).ratio()
+        if ratio >= threshold:
+            return True
+    return False
 
 def select_topic_category() -> str:
-    print("\n📌 Seleziona una tipologia di post:")
+    print("\nSeleziona una tipologia di post:")
     print("1 - Evento imminente")
     print("2 - Guida pratica")
     print("3 - Recensione prodotto")
     print("4 - Lascia scegliere all'agente (random)")
 
-    choice = input("👉 Inserisci il numero della tua scelta: ").strip()
+    choice = input("Inserisci il numero della tua scelta: ").strip()
 
     category_map = {
         "1": "upcoming_events",
@@ -47,7 +56,7 @@ class BlogState(TypedDict):
     topic: Optional[str]
     sources: Optional[list[str]]
     evaluations: Optional[list[str]]
-    retry: Optional[bool]  # Indica se si è già provato il fallback
+    retry: Optional[bool]
     draft: Optional[str]
 
 # Nodo: Topic Suggester
@@ -62,15 +71,19 @@ def suggest_topic(state: BlogState) -> BlogState:
     for _ in range(max_attempts):
         response = llm.invoke(prompt)
         topic_suggestion = response.content.strip()
-        if not is_duplicate(topic_suggestion, history):
-            history.append(topic_suggestion)
+        if not is_duplicate(topic_suggestion, history) and not is_similar(topic_suggestion, history):
+            history.append({
+                "topic": topic_suggestion,
+                "category": selected_category,
+                "date": datetime.today().strftime("%Y-%m-%d")
+            })
             save_topic_history(history)
             print(f"\n[Topic Suggester] Argomento suggerito: {topic_suggestion}")
             return {"topic": topic_suggestion, "sources": None, "evaluations": None, "retry": False, "draft": None}
         else:
-            print(f"\n[Topic Suggester] Argomento duplicato: {topic_suggestion}, ne genero un altro...")
+            print(f"\n[Topic Suggester] Argomento duplicato o simile: {topic_suggestion}, ne genero un altro...")
 
-    print("\n⚠️ Impossibile trovare un argomento nuovo dopo diversi tentativi.")
+    print("\nImpossibile trovare un argomento nuovo dopo diversi tentativi.")
     return {"topic": None, "sources": None, "evaluations": None, "retry": False, "draft": None}
 
 # Nodo: Source Retriever Web con fallback e ricerca mirata
@@ -82,11 +95,11 @@ def retrieve_sources_web(state: BlogState) -> BlogState:
     if not retry:
         query = topic
     else:
-        prompt = f"""
+        prompt = f'''
         L'argomento del post è: {topic}.
         Genera una query di ricerca Google più mirata per trovare contenuti di qualità pertinenti a questo argomento.
         La query deve essere in italiano e orientata a contenuti pratici.
-        """
+        '''
         response = llm.invoke(prompt)
         query = response.content.strip()
 
@@ -111,7 +124,7 @@ def retrieve_sources_web(state: BlogState) -> BlogState:
         sources.append(f"{title} - {snippet} ({link})")
 
     if not sources:
-        print("\n⚠️ Nessuna fonte trovata.")
+        print("\nNessuna fonte trovata.")
         return {"topic": topic, "sources": None, "evaluations": None, "retry": True, "draft": None}
 
     print("\n[Source Retriever Web] Fonti trovate:")
@@ -124,10 +137,10 @@ def retrieve_sources_web(state: BlogState) -> BlogState:
 def evaluate_sources(state: BlogState) -> BlogState:
     topic = state["topic"]
     sources = state["sources"]
-    llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+    llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
     joined_sources = "\n".join(f"{i+1}. {s}" for i, s in enumerate(sources))
-    prompt = f"""
+    prompt = f'''
     Stai aiutando un blogger a scegliere contenuti per un post su:
     "{topic}"
 
@@ -136,7 +149,7 @@ def evaluate_sources(state: BlogState) -> BlogState:
 
     Valuta ciascuna fonte da 1 a 10 (1 = poco utile o inaffidabile, 10 = molto utile e pertinente), 
     spiegando brevemente il motivo. Rispondi in elenco numerato.
-    """
+    '''
     response = llm.invoke(prompt)
     evaluations = response.content.strip().split("\n")
     evaluations = [e.strip("-• ") for e in evaluations if e.strip()]
@@ -157,7 +170,7 @@ def draft_post(state: BlogState) -> BlogState:
     source_text = "\n".join(sources)
     eval_text = "\n".join(evaluations)
 
-    prompt = f"""
+    prompt = f'''
     Scrivi una bozza di post per un blog di viaggi in moto.
 
     Argomento: "{topic}"
@@ -173,8 +186,7 @@ def draft_post(state: BlogState) -> BlogState:
     - avere un'introduzione, corpo e conclusione
     - includere consigli pratici
     - essere lungo massimo 300 parole
-    """
-
+    '''
     response = llm.invoke(prompt)
     draft = response.content.strip()
 
@@ -196,7 +208,6 @@ builder.add_node("source_retriever_web", retrieve_sources_web)
 builder.add_node("source_evaluator", evaluate_sources)
 builder.add_node("post_drafter", draft_post)
 
-# Routing condizionale
 builder.set_entry_point("topic_suggester")
 builder.add_edge("topic_suggester", "source_retriever_web")
 builder.add_conditional_edges(
@@ -209,5 +220,12 @@ builder.set_finish_point("post_drafter")
 graph = builder.compile()
 
 # Esecuzione
-initial_state: BlogState = {"topic": None, "sources": None, "evaluations": None, "retry": False, "draft": None}
+initial_state: BlogState = {
+    "topic": None,
+    "sources": None,
+    "evaluations": None,
+    "retry": False,
+    "draft": None
+}
+
 final_state = graph.invoke(initial_state)
