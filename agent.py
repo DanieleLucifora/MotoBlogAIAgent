@@ -26,7 +26,7 @@ def save_topic_history(history):
 def is_duplicate(new_topic, history):
     return any(new_topic.lower() == t["topic"].lower() for t in history)
 
-def is_similar(new_topic, history, threshold: float = 0.85):
+def is_similar(new_topic, history, threshold: float = 0.7):
     for old in history:
         ratio = difflib.SequenceMatcher(None, new_topic.lower(), old["topic"].lower()).ratio()
         if ratio >= threshold:
@@ -51,7 +51,7 @@ def select_topic_category() -> str:
 
     return category_map.get(choice, "random")
 
-# Stato del sistema
+# === Stato del sistema ===
 class BlogState(TypedDict):
     topic: Optional[str]
     sources: Optional[list[str]]
@@ -59,18 +59,18 @@ class BlogState(TypedDict):
     retry: Optional[bool]
     draft: Optional[str]
 
-# Nodo: Topic Suggester
+# === Nodo: Topic Suggester (aggiornato con prompt variabile) ===
 def suggest_topic(state: BlogState) -> BlogState:
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.8)
+    llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.8)
     selected_category = select_topic_category()
-    prompt = get_prompt_by_category(selected_category)
-
     history = load_topic_history()
     max_attempts = 5
 
     for _ in range(max_attempts):
+        prompt = get_prompt_by_category(selected_category)  # Cambia prompt (tema) ogni volta
         response = llm.invoke(prompt)
         topic_suggestion = response.content.strip()
+
         if not is_duplicate(topic_suggestion, history) and not is_similar(topic_suggestion, history):
             history.append({
                 "topic": topic_suggestion,
@@ -86,11 +86,14 @@ def suggest_topic(state: BlogState) -> BlogState:
     print("\nImpossibile trovare un argomento nuovo dopo diversi tentativi.")
     return {"topic": None, "sources": None, "evaluations": None, "retry": False, "draft": None}
 
-# Nodo: Source Retriever Web con fallback e ricerca mirata
+# === Nodo: Source Retriever Web ===
 def retrieve_sources_web(state: BlogState) -> BlogState:
     topic = state["topic"]
+    if not topic:
+        print("\nNessun argomento generato. Il flusso viene interrotto.")
+        exit(1)
     retry = state.get("retry", False)
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
+    llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.3)
 
     if not retry:
         query = topic
@@ -133,11 +136,11 @@ def retrieve_sources_web(state: BlogState) -> BlogState:
 
     return {"topic": topic, "sources": sources, "evaluations": None, "retry": False, "draft": None}
 
-# Nodo: Source Evaluator
+# === Nodo: Source Evaluator ===
 def evaluate_sources(state: BlogState) -> BlogState:
     topic = state["topic"]
     sources = state["sources"]
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+    llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.7)
 
     joined_sources = "\n".join(f"{i+1}. {s}" for i, s in enumerate(sources))
     prompt = f'''
@@ -160,7 +163,7 @@ def evaluate_sources(state: BlogState) -> BlogState:
 
     return {"topic": topic, "sources": sources, "evaluations": evaluations, "retry": False, "draft": None}
 
-# Nodo: Post Drafter
+# === Nodo: Post Drafter ===
 def draft_post(state: BlogState) -> BlogState:
     topic = state["topic"]
     sources = state["sources"]
@@ -201,7 +204,7 @@ def draft_post(state: BlogState) -> BlogState:
         "draft": draft
     }
 
-# Costruzione del grafo
+# === Costruzione del grafo ===
 builder = StateGraph(BlogState)
 builder.add_node("topic_suggester", suggest_topic)
 builder.add_node("source_retriever_web", retrieve_sources_web)
@@ -219,7 +222,7 @@ builder.set_finish_point("post_drafter")
 
 graph = builder.compile()
 
-# Esecuzione
+# === Esecuzione ===
 initial_state: BlogState = {
     "topic": None,
     "sources": None,
