@@ -1,7 +1,5 @@
 # Agente Intelligente per Blog di Viaggi in Moto
 
-![LangGraph Architecture](graph.png)
-
 ## 📝 Descrizione
 
 Questo progetto implementa un sistema multi-agente basato su LangGraph per la generazione automatica di contenuti per un blog dedicato ai viaggi in moto. Il sistema utilizza un'architettura a grafo per orchestrare agenti specializzati che collaborano nella creazione di post originali, informativi e ben documentati.
@@ -32,6 +30,8 @@ Sviluppato come progetto per il corso di Cognitive Computing and Artificial Inte
   - Limitazione di lunghezza per migliorare leggibilità
 
 ## 🛠️ Architettura
+
+![LangGraph Architecture](graph.png)
 
 Il sistema implementa un grafo diretto con quattro nodi principali:
 
