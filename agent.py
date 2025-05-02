@@ -6,26 +6,29 @@ from typing import TypedDict, Optional
 from langgraph.graph import StateGraph
 from langchain_openai import ChatOpenAI
 from serpapi import GoogleSearch
-
+from IPython.display import Image, display
 from prompt import get_prompt_by_category
 
-# === Costanti ===
-HISTORY_FILE = "topic_history.json"  # File JSON con lista di dict: {"topic": ..., "category": ..., "date": ...}
+# File di storico per evitare ripetizioni di argomenti
+HISTORY_FILE = "topic_history.json"
 
-# === Funzioni di gestione dello storico ===
+# Carica lo storico degli argomenti da file
 def load_topic_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
 
+# Salva lo storico aggiornato nel file JSON
 def save_topic_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
+# Controlla se un argomento è identico a uno già usato
 def is_duplicate(new_topic, history):
     return any(new_topic.lower() == t["topic"].lower() for t in history)
 
+# Controlla se un argomento è troppo simile ad altri passati
 def is_similar(new_topic, history, threshold: float = 0.7):
     for old in history:
         ratio = difflib.SequenceMatcher(None, new_topic.lower(), old["topic"].lower()).ratio()
@@ -33,25 +36,23 @@ def is_similar(new_topic, history, threshold: float = 0.7):
             return True
     return False
 
+# Permette all'utente di scegliere la categoria del post
 def select_topic_category() -> str:
     print("\nSeleziona una tipologia di post:")
     print("1 - Evento imminente")
     print("2 - Guida pratica")
     print("3 - Recensione prodotto")
     print("4 - Lascia scegliere all'agente (random)")
-
     choice = input("Inserisci il numero della tua scelta: ").strip()
-
     category_map = {
         "1": "upcoming_events",
         "2": "how_to",
         "3": "product_review",
         "4": "random"
     }
-
     return category_map.get(choice, "random")
 
-# === Stato del sistema ===
+# Definizione dello stato condiviso tra i nodi
 class BlogState(TypedDict):
     topic: Optional[str]
     sources: Optional[list[str]]
@@ -59,7 +60,7 @@ class BlogState(TypedDict):
     retry: Optional[bool]
     draft: Optional[str]
 
-# === Nodo: Topic Suggester (aggiornato con prompt variabile) ===
+# Nodo 1: suggerisce un argomento originale, evitando duplicazioni
 def suggest_topic(state: BlogState) -> BlogState:
     llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.8)
     selected_category = select_topic_category()
@@ -67,7 +68,7 @@ def suggest_topic(state: BlogState) -> BlogState:
     max_attempts = 5
 
     for _ in range(max_attempts):
-        prompt = get_prompt_by_category(selected_category)  # Cambia prompt (tema) ogni volta
+        prompt = get_prompt_by_category(selected_category)
         response = llm.invoke(prompt)
         topic_suggestion = response.content.strip()
 
@@ -86,7 +87,7 @@ def suggest_topic(state: BlogState) -> BlogState:
     print("\nImpossibile trovare un argomento nuovo dopo diversi tentativi.")
     return {"topic": None, "sources": None, "evaluations": None, "retry": False, "draft": None}
 
-# === Nodo: Source Retriever Web ===
+# Nodo 2: ricerca fonti online e gestisce un eventuale retry
 def retrieve_sources_web(state: BlogState) -> BlogState:
     topic = state["topic"]
     if not topic:
@@ -100,8 +101,7 @@ def retrieve_sources_web(state: BlogState) -> BlogState:
     else:
         prompt = f'''
         L'argomento del post è: {topic}.
-        Genera una query di ricerca Google più mirata per trovare contenuti di qualità pertinenti a questo argomento.
-        La query deve essere in italiano e orientata a contenuti pratici.
+        Genera una query di ricerca Google più mirata per trovare contenuti di qualità pertinenti.
         '''
         response = llm.invoke(prompt)
         query = response.content.strip()
@@ -136,7 +136,7 @@ def retrieve_sources_web(state: BlogState) -> BlogState:
 
     return {"topic": topic, "sources": sources, "evaluations": None, "retry": False, "draft": None}
 
-# === Nodo: Source Evaluator ===
+# Nodo 3: valuta la qualità delle fonti recuperate
 def evaluate_sources(state: BlogState) -> BlogState:
     topic = state["topic"]
     sources = state["sources"]
@@ -144,14 +144,10 @@ def evaluate_sources(state: BlogState) -> BlogState:
 
     joined_sources = "\n".join(f"{i+1}. {s}" for i, s in enumerate(sources))
     prompt = f'''
-    Stai aiutando un blogger a scegliere contenuti per un post su:
-    "{topic}"
-
-    Qui ci sono 5 fonti trovate online:
+    Stai aiutando un blogger a scegliere contenuti per un post su: "{topic}"
+    Valuta 5 fonti su: RILEVANZA, AUTOREVOLEZZA, ATTUALITÀ, UTILITÀ pratica (1-10).
+    Dai anche un punteggio totale e una breve spiegazione.
     {joined_sources}
-
-    Valuta ciascuna fonte da 1 a 10 (1 = poco utile o inaffidabile, 10 = molto utile e pertinente), 
-    spiegando brevemente il motivo. Rispondi in elenco numerato.
     '''
     response = llm.invoke(prompt)
     evaluations = response.content.strip().split("\n")
@@ -163,32 +159,24 @@ def evaluate_sources(state: BlogState) -> BlogState:
 
     return {"topic": topic, "sources": sources, "evaluations": evaluations, "retry": False, "draft": None}
 
-# === Nodo: Post Drafter ===
+# Nodo 4: genera una bozza di post basata su fonti ed analisi
 def draft_post(state: BlogState) -> BlogState:
     topic = state["topic"]
     sources = state["sources"]
     evaluations = state["evaluations"]
-    llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+    llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.7)
 
     source_text = "\n".join(sources)
     eval_text = "\n".join(evaluations)
 
     prompt = f'''
     Scrivi una bozza di post per un blog di viaggi in moto.
-
     Argomento: "{topic}"
-
-    Fonti da considerare:
+    Fonti:
     {source_text}
-
-    Valutazioni di qualità delle fonti:
+    Valutazioni:
     {eval_text}
-
-    Il post deve:
-    - essere utile, concreto e amichevole
-    - avere un'introduzione, corpo e conclusione
-    - includere consigli pratici
-    - essere lungo massimo 300 parole
+    Il post deve avere: introduzione, corpo, conclusione, essere utile e lungo max 300 parole.
     '''
     response = llm.invoke(prompt)
     draft = response.content.strip()
@@ -204,7 +192,7 @@ def draft_post(state: BlogState) -> BlogState:
         "draft": draft
     }
 
-# === Costruzione del grafo ===
+# Costruzione del grafo agentico
 builder = StateGraph(BlogState)
 builder.add_node("topic_suggester", suggest_topic)
 builder.add_node("source_retriever_web", retrieve_sources_web)
@@ -220,9 +208,12 @@ builder.add_conditional_edges(
 builder.add_edge("source_evaluator", "post_drafter")
 builder.set_finish_point("post_drafter")
 
+# Compila e salva il grafo come immagine
 graph = builder.compile()
+with open("graph.png", "wb") as f:
+    f.write(graph.get_graph().draw_mermaid_png())
 
-# === Esecuzione ===
+# Stato iniziale per avviare il processo
 initial_state: BlogState = {
     "topic": None,
     "sources": None,
@@ -231,4 +222,5 @@ initial_state: BlogState = {
     "draft": None
 }
 
+# Invocazione finale del grafo
 final_state = graph.invoke(initial_state)
