@@ -1,12 +1,12 @@
 # Agente Intelligente per Blog di Viaggi in Moto
 
-## 📝 Descrizione
+## Descrizione
 
 Questo progetto implementa un sistema multi-agente basato su LangGraph per la generazione automatica di contenuti per un blog dedicato ai viaggi in moto. Il sistema utilizza un'architettura a grafo per orchestrare agenti specializzati che collaborano nella creazione di post originali, informativi e ben documentati.
 
 Sviluppato come progetto per il corso di Cognitive Computing and Artificial Intelligence presso l'Università degli Studi di Catania (A.A. 2024-2025).
 
-## 🚀 Funzionalità
+## Funzionalità
 
 - **Generazione di argomenti originali** per tre tipologie di post:
   - Eventi motociclistici imminenti
@@ -29,7 +29,7 @@ Sviluppato come progetto per il corso di Cognitive Computing and Artificial Inte
   - Conclusione efficace
   - Limitazione di lunghezza per migliorare leggibilità
 
-## 🛠️ Architettura
+## Architettura
 
 ![LangGraph Architecture](graph.png)
 
@@ -42,7 +42,7 @@ Il sistema implementa un grafo diretto con quattro nodi principali:
 
 L'architettura utilizza routing condizionale per gestire casi di ricerca insufficiente e migliorare iterativamente i risultati.
 
-## 📋 Requisiti
+## Requisiti
 
 - Python 3.9+
 - LangGraph 
@@ -50,7 +50,7 @@ L'architettura utilizza routing condizionale per gestire casi di ricerca insuffi
 - OpenAI API key
 - SerpAPI key (configurata come variabile d'ambiente `SERPAPI_API_KEY`)
 
-## 🚀 Installazione
+## Installazione
 
 ```bash
 # Clone del repository
@@ -65,7 +65,7 @@ export OPENAI_API_KEY=your_openai_api_key
 export SERPAPI_API_KEY=your_serpapi_api_key
 ```
 
-## 🏃‍♂️ Utilizzo
+## Utilizzo
 
 ```bash
 python agent.py
@@ -73,7 +73,7 @@ python agent.py
 
 Segui le istruzioni a schermo per selezionare la categoria di post desiderata e lascia che il sistema generi automaticamente il contenuto.
 
-## 📂 Struttura del Progetto
+## Struttura del Progetto
 
 ```
 .
@@ -85,7 +85,7 @@ Segui le istruzioni a schermo per selezionare la categoria di post desiderata e 
 └── README.md          # Documentazione del progetto
 ```
 
-## 🔄 Flusso di Esecuzione
+## Flusso di Esecuzione
 
 1. L'utente seleziona la categoria di post (o sceglie di lasciare decidere all'agente)
 2. Il sistema genera un argomento originale verificando la non ripetitività
@@ -94,14 +94,12 @@ Segui le istruzioni a schermo per selezionare la categoria di post desiderata e 
 5. Viene redatta una bozza di post strutturata basata sulle fonti di qualità
 6. Il risultato finale viene presentato all'utente
 
-## 👥 Autori
+## Autori
 
 - Giovanni Ragusa
 - Daniele Lucifora
 
-Progetto realizzato sotto la supervisione della Prof.ssa Daniela Giordano.
-
-## 📈 Sviluppi Futuri
+## Sviluppi Futuri
 
 - Implementazione di un sistema di revisione human-in-the-loop
 - Interfaccia web per un'interazione più immediata
@@ -109,6 +107,6 @@ Progetto realizzato sotto la supervisione della Prof.ssa Daniela Giordano.
 - Integrazione con strumenti di ottimizzazione SEO
 - Supporto multilingua
 
-## 📄 Licenza
+## Licenza
 
 MIT License
